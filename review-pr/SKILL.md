@@ -41,25 +41,41 @@ This skill addresses recurring failures in PR reviews:
 
 ## Workflow
 
-### 1. Setup
+### 1. Setup and Checkout
 - Use TodoWrite to track review progress
-- Check existing reviews to avoid duplicates
 - Get PR context (title, body, linked issues, files changed)
-- Checkout PR branch and verify you're on correct branch
+- **Get actual branch name**: `gh pr view {pr} --json headRefName`
+- **Checkout and pull latest**: `git fetch origin {branch} && git checkout {branch} && git pull`
+- Verify you're on correct branch: `git branch --show-current`
 
-### 2. Understand Context
+### 2. Check Existing Feedback
+**CRITICAL: See what's already been reported**
+- Fetch all existing inline comments: `gh api repos/{owner}/{repo}/pulls/{pr}/comments`
+- Fetch PR conversation reviews: `gh pr view {pr} --json reviews`
+- Check recent commits - look for "Fix:" commits addressing previous feedback
+- Note which issues have been claimed as fixed
+
+### 3. Review Current State
+**Review the ACTUAL code as it exists NOW, not just diffs or commits**
+- **Read the actual files**: Use Read tool on changed files to see complete current state
+- **Don't rely solely on diffs**: Diffs show what changed, not what exists
+- **Don't trust commit messages**: "Fix X" doesn't mean X is actually fixed
+- **Verify claimed fixes**: If previous comments say "fixed", check if actually fixed in current code
+- Compare current code against existing feedback to see what's truly resolved
+
+### 4. Understand Context
 - **Read project docs**: CLAUDE.md, README.md, ARCHITECTURE.md, CONTRIBUTING.md
-- **Review diff**: Use `gh pr diff` or read changed files
+- **Check commit history**: `git log origin/main..HEAD` to understand evolution
+- **Review diff**: `gh pr diff` to see what changed from base
 - **Understand intent**: What problem is this PR solving?
 
-### 3. Analyze Code (Adversarial Mindset)
+### 5. Analyze Code (Adversarial Mindset)
 - **Assume bugs exist** - Hunt for them systematically
 - **Check security first** - Most critical findings
 - **Verify architecture** - Does it follow project patterns?
 - **Test coverage** - Are edge cases handled?
 
-### 4. Post Findings
-
+### 6. Post NEW Findings Only
 **For code-specific issues** - Post inline comments on exact lines:
 - Use `/repos/{owner}/{repo}/pulls/{pr}/comments` endpoint
 - Requires: `commit_id`, `path`, `line`, `side` ("RIGHT" for new/modified, "LEFT" for deleted)
@@ -67,18 +83,22 @@ This skill addresses recurring failures in PR reviews:
 
 **For architectural/conceptual feedback** - Use review summary
 
-### 5. Create Review Summary
+### 7. Resolve Addressed Threads
+**CRITICAL: Clean up resolved issues**
+- Fetch unresolved review threads (see API reference)
+- For each unresolved thread created by you (gastonsalg):
+  - Check if issue is fixed in current code
+  - Check if author replied explaining the fix
+  - If addressed: Resolve the thread using GraphQL mutation
+- **Don't leave threads unresolved** if they've been tackled
+
+### 8. Create Review Summary
 - Determine event: APPROVE (no blockers) | REQUEST_CHANGES (critical issues) | COMMENT (suggestions only)
-- List findings by severity with file:line references
+- List NEW findings by severity with file:line references
 - State approval rationale clearly
 - Keep concise - no PR overview, no file lists
 
-### 6. Interactive Review (Optional)
-- **Reply to developer questions**: Use `/comments/{comment_id}/replies` endpoint
-- **Resolve threads**: Use GraphQL `resolveReviewThread` mutation after issues are addressed
-- **Don't auto-resolve**: Wait for developer confirmation
-
-### 7. Return to Main Branch
+### 9. Return to Main Branch
 - Always return to main after review
 
 ---
@@ -180,9 +200,9 @@ gh pr review $PR --approve -b "## Review Summary
 **Problem**: Describing fixes in prose instead of showing code
 **Fix**: Use `suggestion` code fence - GitHub creates one-click apply button
 
-### ❌ Auto-Resolving Threads
-**Problem**: Resolving threads before developer confirms fix
-**Fix**: Wait for developer to address issue and confirm, then resolve
+### ❌ Leaving Threads Unresolved
+**Problem**: Not resolving threads after issues are fixed or answered
+**Fix**: Check unresolved threads at end of review, resolve those that have been addressed
 
 ### ❌ Verbose Feedback
 **Problem**: Over-explaining, excessive praise, repeating context
@@ -196,13 +216,24 @@ gh pr review $PR --approve -b "## Review Summary
 **Problem**: Reviewing against generic best practices
 **Fix**: Read CLAUDE.md and ARCHITECTURE.md first
 
+### ❌ Re-Reporting Fixed Issues
+**Problem**: Reporting issues that were already fixed in recent commits
+**Fix**: Checkout PR branch, read actual current files, verify issue exists in current code before reporting
+
+### ❌ Reviewing Diffs Instead of Actual Code
+**Problem**: Only looking at diffs/commits without reading complete current files
+**Fix**: Always read the full current files to see actual state, not just what changed
+
 ---
 
 ## Red Flags (Fail Fast)
 
 - ❌ Running commands before TodoWrite
 - ❌ Operating on wrong branch (not PR branch)
-- ❌ Skipping project documentation
+- ❌ Not checking out and pulling latest PR branch code
+- ❌ Reviewing diffs/commits instead of reading actual current files
+- ❌ Skipping existing feedback check (inline comments + reviews)
 - ❌ Posting blob comments instead of inline
 - ❌ Assuming code is correct without adversarial analysis
-- ❌ Duplicating existing feedback
+- ❌ Reporting issues without verifying they exist in current code
+- ❌ Leaving your unresolved threads when issues have been fixed
