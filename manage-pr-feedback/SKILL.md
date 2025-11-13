@@ -1,6 +1,6 @@
 ---
 name: manage-pr-feedback
-description: Manages feedback on your PRs by reading, replying to, and resolving inline comments from reviewers (Copilot, humans). Use when addressing PR review feedback as the PR author, not when reviewing others' PRs. Handles inline comments, review threads, and resolution tracking.
+description: Manages feedback on your PRs by reading, replying to, and resolving ALL reviewer comments - both inline review threads (code-specific) and conversation comments (review summaries with suggestions). Use when addressing PR review feedback as the PR author. Handles Copilot and human reviewers, thread resolution, and ensures no feedback is missed.
 ---
 
 # Manage PR Feedback Skill
@@ -9,6 +9,7 @@ description: Manages feedback on your PRs by reading, replying to, and resolving
 
 This skill addresses recurring failures when responding to PR feedback:
 - **Replying to comments but forgetting to resolve threads** (most common)
+- **Only checking inline threads, missing conversation comments** (common)
 - Losing track of which feedback has been addressed
 - Batch processing feedback (fix all → reply all → resolve all), which causes forgotten resolutions
 - Not assessing whether reviewer suggestions are actually correct
@@ -58,9 +59,14 @@ This skill addresses recurring failures when responding to PR feedback:
 
 ## Workflow
 
-### 1. Get All Unresolved Threads
-- Fetch PR number and unresolved review threads (GraphQL API)
-- Use TodoWrite to track each comment thread
+### 1. Get All Feedback (Both Sources)
+**Check BOTH inline threads AND conversation comments**:
+- **Review threads**: Fetch unresolved review threads via GraphQL API (inline code comments with file/line context)
+- **Conversation comments**: Check PR conversation tab with `gh pr view $PR --comments` (review summaries, approvals with suggestions)
+
+**Why both?** Reviewers often leave inline threads for code-specific issues (resolvable) and conversation comments for general feedback, "APPROVED ✅ with minor suggestions" reviews, architecture discussions.
+
+- Use TodoWrite to track ALL feedback (inline + conversation)
 - Prioritize: blocking issues → security → suggestions → questions
 
 ### 2. Process Each Comment Individually
@@ -101,8 +107,9 @@ This skill addresses recurring failures when responding to PR feedback:
 **This is the step that gets forgotten in batch workflows - do it NOW while context is fresh.**
 
 ### 3. Post Summary Comment
-After processing all threads:
+After processing all feedback (inline threads + conversation comments):
 - List what was addressed with commit references
+- Reply to conversation comments with explanations
 - Request re-review from reviewers
 - Mention any items awaiting reviewer response
 
@@ -134,6 +141,15 @@ query {
     }
   }
 }' --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)'
+```
+
+### Get PR Conversation Comments
+```bash
+# Shows ALL comments including review summaries with suggestions
+gh pr view $PR --comments
+
+# Or via API for recent comments
+gh api repos/owner/repo/issues/$PR/comments
 ```
 
 ### Reply to Comment
@@ -196,10 +212,17 @@ gh pr comment $PR -b "All feedback addressed:
 **Problem**: Losing track of which threads are addressed
 **Fix**: Use TodoWrite to track each thread systematically
 
+### ❌ Only Checking Inline Threads, Missing Conversation Comments
+**Problem**: Fetching unresolved threads, seeing they're all resolved, concluding "all done" - but missing review summary comments with suggestions in PR conversation
+**Fix**: ALWAYS check both sources:
+- `gh api graphql` for inline review threads
+- `gh pr view --comments` for conversation comments with embedded feedback
+
 ---
 
 ## Red Flags (Fail Fast)
 
+- ❌ Only checking `reviewThreads`, not checking conversation comments
 - ❌ Resolving thread before pushing fix commit
 - ❌ Processing multiple comments before resolving any
 - ❌ Not replying to reviewer questions
