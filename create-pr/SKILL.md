@@ -15,6 +15,7 @@ This skill enforces the mandatory git workflow for production safety. Direct pus
 - Skipping tests before committing
 - Creating PRs without running code review
 - Committing secrets or temporary files
+- Creating PRs targeting wrong base branch (feature branch instead of main)
 
 **Why this matters:**
 - Production deployments trigger automatically from main
@@ -85,7 +86,23 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 - Push with upstream tracking: `git push -u origin <branch-name>`
 - Verify push succeeded
 
-### 6. Create Pull Request
+### 6. Assess Base Branch & Create Pull Request
+**CRITICAL: Determine correct base/destination branch before creating PR**
+
+**Default pattern (most common):**
+- ✅ Target `main` (or `master`) for independent fixes/features
+- Each PR should merge independently into main
+
+**When to target a different branch:**
+- Long-lived feature branch exists for epic/large feature
+- Intentional dependency chain (rare, requires justification)
+- Release branch workflow (if project uses it)
+
+**Assessment questions:**
+- Is this fix/feature independent? → Target main
+- Does this depend on unmerged code in another branch? → Verify if dependency is necessary
+- Are we building on a long-lived feature branch? → Confirm with user
+
 **PR description includes:**
 - Summary (1-3 bullet points)
 - Testing checklist (unit, integration, manual)
@@ -132,6 +149,21 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 **Problem**: Messages like "fix bug" or "update code"
 **Fix**: Describe why the change was needed, not just what changed
 
+### ❌ Wrong Base Branch for PR
+**Problem**: Creating PR targeting feature branch instead of main, creating unnecessary dependency chain
+**Fix**: Always assess destination branch - default is main unless there's a clear reason (long-lived feature branch, intentional dependency). When in doubt, target main.
+
+**Example of mistake:**
+- Working on issue #287 (connection pool optimization)
+- Branched from `fix/issue-286` to avoid conflicts
+- Created PR targeting `fix/issue-286` instead of `main`
+- Result: PR #287 can't merge until PR #286 merges (unnecessary dependency)
+
+**Correct approach:**
+- Branch from `main` for independent fixes
+- Both PRs target `main` independently
+- Can merge in any order
+
 ---
 
 ## Edge Cases
@@ -163,3 +195,4 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 - ❌ Critical code review findings unresolved
 - ❌ Secrets in staged changes
 - ❌ Force push to main/master
+- ❌ PR targeting feature branch without clear justification
