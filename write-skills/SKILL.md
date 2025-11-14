@@ -36,6 +36,20 @@ Ask: "Does this address a recurring failure or encode unique knowledge?"
 
 ## Official Anthropic Requirements
 
+### File Structure (CRITICAL)
+
+**The skill file MUST be named `SKILL.md` (uppercase)**, not `.claude.md`, `skill.md`, or any other variation.
+
+**Directory structure:**
+- Personal skills: `~/.claude/skills/skill-name/SKILL.md`
+- Project skills: `.claude/skills/skill-name/SKILL.md`
+
+**Common naming mistakes:**
+- ❌ `.claude.md` (incorrect)
+- ❌ `skill.md` (lowercase - incorrect)
+- ❌ `Skill.md` (mixed case - incorrect)
+- ✅ `SKILL.md` (correct)
+
 ### YAML Frontmatter
 ```yaml
 ---
@@ -47,7 +61,7 @@ description: Brief description of what this skill does and when to use it. Max 1
 ### Key Guidelines
 - **Focused scope**: One capability per skill
 - **Specific descriptions**: Include trigger terms and use cases
-- **Clear naming**: Descriptive, lowercase, hyphens only
+- **Clear naming**: Descriptive, lowercase, hyphens only (for directory and name field)
 - **No duplication**: Don't overlap with other skills
 
 ---
@@ -312,6 +326,15 @@ gh api repos/{owner}/{repo}/pulls/$PR/comments --method POST \\
 **Problem**: Skill tries to cover multiple distinct capabilities
 **Fix**: Split into focused skills (one capability each)
 
+### ❌ Wrong Filename
+**Problem**: Looking for `.claude.md` or `skill.md` (lowercase) instead of `SKILL.md`
+**Fix**: The file MUST be named `SKILL.md` (uppercase). Located at `~/.claude/skills/skill-name/SKILL.md` or `.claude/skills/skill-name/SKILL.md`
+
+**Example of this mistake:**
+- Attempting to read `/path/to/skill/.claude.md` (doesn't exist)
+- Attempting to read `/path/to/skill/skill.md` (lowercase - doesn't exist)
+- Correct path: `/path/to/skill/SKILL.md` (uppercase)
+
 ---
 
 ## Skill Locations
@@ -361,3 +384,4 @@ gh api repos/{owner}/{repo}/pulls/$PR/comments --method POST \\
 - ❌ Could be a docs page instead
 - ❌ Overlaps significantly with another skill
 - ❌ No "Common Mistakes" section
+- ❌ File not named `SKILL.md` (uppercase)
