@@ -10,6 +10,7 @@ description: Manages feedback on your PRs by reading, replying to, and resolving
 This skill addresses recurring failures when responding to PR feedback:
 - **Replying to comments but forgetting to resolve threads** (most common)
 - **Only checking inline threads, missing conversation comments** (common)
+- **Missing non-blocking feedback in approved PRs** (common - approval creates false sense of completion)
 - Losing track of which feedback has been addressed
 - Batch processing feedback (fix all → reply all → resolve all), which causes forgotten resolutions
 - Not assessing whether reviewer suggestions are actually correct
@@ -55,6 +56,16 @@ This skill addresses recurring failures when responding to PR feedback:
 - **Objective**: State facts, avoid defensiveness
 - **Actionable**: Clear what was done or will be done
 
+### Approval Status Is Not Completion Signal
+**Critical**: PR approval ≠ all feedback addressed
+- Reviewers often approve with "minor observations", "non-blocking suggestions", or "nice-to-haves"
+- **Read the ENTIRE approval comment** - look for sections like:
+  - "Minor observations", "Non-blocking issues", "Suggestions"
+  - "LGTM but...", "Approved with recommendations"
+  - Lists of improvements marked as "(not bugs)" or "(optional)"
+- **Assess each observation**: Even if marked "non-blocking", consider addressing for code quality
+- Don't use approval as signal to stop reading - parse the full comment text
+
 ---
 
 ## Workflow
@@ -66,8 +77,14 @@ This skill addresses recurring failures when responding to PR feedback:
 
 **Why both?** Reviewers often leave inline threads for code-specific issues (resolvable) and conversation comments for general feedback, "APPROVED ✅ with minor suggestions" reviews, architecture discussions.
 
-- Use TodoWrite to track ALL feedback (inline + conversation)
-- Prioritize: blocking issues → security → suggestions → questions
+**Critical for approved PRs**:
+- **Don't stop at "APPROVED" status** - read the full approval comment
+- Look for sections: "Minor observations", "Suggestions", "Non-blocking", "Nice-to-haves"
+- Parse lists of improvements even if marked "(not bugs)" or "(optional)"
+- Count ALL feedback items, not just unresolved threads
+
+- Use TodoWrite to track ALL feedback (inline + conversation + non-blocking observations)
+- Prioritize: blocking issues → security → suggestions → minor observations
 
 ### 2. Process Each Comment Individually
 
@@ -218,11 +235,26 @@ gh pr comment $PR -b "All feedback addressed:
 - `gh api graphql` for inline review threads
 - `gh pr view --comments` for conversation comments with embedded feedback
 
+### ❌ Stopping at "APPROVED" Status Without Reading Full Comment
+**Problem**: PR shows "APPROVED", assume all feedback addressed, miss "Minor observations" section with valid improvements
+**Fix**: Approval status is NOT a completion signal - parse the entire approval comment text:
+- Look for sections: "Minor observations", "Suggestions", "Non-blocking issues"
+- Watch for phrases: "LGTM but...", "Approved with recommendations", "(not bugs)"
+- Assess each observation - even "minor" improvements enhance code quality
+
+**Example of this mistake**:
+- PR #286 approved by eduxing with "LGTM"
+- Approval comment included "Minor Observations (not bugs)" section with 3 items
+- Initial scan missed these because unresolved threads = 0 and status = APPROVED
+- User caught the miss: "Did you notice those?"
+
 ---
 
 ## Red Flags (Fail Fast)
 
 - ❌ Only checking `reviewThreads`, not checking conversation comments
+- ❌ Seeing "APPROVED" status and stopping without reading full comment
+- ❌ Unresolved threads = 0, concluding "all done" without checking conversation
 - ❌ Resolving thread before pushing fix commit
 - ❌ Processing multiple comments before resolving any
 - ❌ Not replying to reviewer questions
