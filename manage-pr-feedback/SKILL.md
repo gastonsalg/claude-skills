@@ -70,6 +70,23 @@ This skill addresses recurring failures when responding to PR feedback:
 
 ## Workflow
 
+### 0. Check and Resolve Merge Conflicts (If Present)
+**BEFORE processing feedback, handle any merge conflicts**:
+
+**Check for conflicts**:
+- Fetch PR details: `gh pr view $PR --json mergeable`
+- If `mergeable: "CONFLICTING"`, resolve conflicts first
+
+**Resolve conflicts**:
+- Check out the PR branch (use actual branch name, not `pr-###` syntax)
+- Merge or rebase with base branch (usually `main`)
+- If conflicts are simple (imports, formatting), resolve them
+- If conflicts are complex or unclear, **ASK USER** before proceeding
+- Commit resolved conflicts with clear message
+- Push to remote
+
+**Only proceed to feedback processing after conflicts are resolved.**
+
 ### 1. Get All Feedback (Both Sources)
 **Check BOTH inline threads AND conversation comments**:
 - **Review threads**: Fetch unresolved review threads via GraphQL API (inline code comments with file/line context)
@@ -83,45 +100,62 @@ This skill addresses recurring failures when responding to PR feedback:
 - Parse lists of improvements even if marked "(not bugs)" or "(optional)"
 - Count ALL feedback items, not just unresolved threads
 
-- Use TodoWrite to track ALL feedback (inline + conversation + non-blocking observations)
+**Use TodoWrite to track ALL feedback** (inline + conversation + non-blocking observations):
+- Create one todo per feedback item
 - Prioritize: blocking issues → security → suggestions → minor observations
 
 ### 2. Process Each Comment Individually
 
+**CRITICAL**: You MUST complete ALL steps (A→B→C→D) for ONE comment before moving to the next.
+
+**Stop and verify before proceeding**: After completing step D for a comment, explicitly confirm in your response: "✅ Comment [N] complete: fixed, replied, resolved." Only then move to the next comment.
+
 **For each unresolved thread (in sequence)**:
 
 #### A. Read and Assess
+- Update todo: mark this comment as "in_progress"
 - Read comment carefully
 - **Assess validity**: Is this suggestion correct? Are there trade-offs?
 - Decide: implement, decline, or ask for clarification
+- State your decision explicitly before proceeding
 
 #### B. Take Action Based on Assessment
 **If implementing**:
 - Make the code change
 - Run relevant tests to verify fix
-- Commit with clear message
+- Commit with clear message describing the fix
 - Push to remote
+- Record commit SHA for reply
 
 **If declining**:
 - Prepare respectful explanation with reasoning
 - Consider trade-offs or alternative approaches
+- Prepare your response text
 
 **If unclear**:
 - Prepare clarifying questions for reviewer
+- Note that thread should NOT be resolved (awaiting response)
 
 #### C. Reply to Comment
+**Do this IMMEDIATELY after step B, before any other work**:
+- Use the comment ID from the thread
 - State what you did or decided
-- Reference commit SHA if fixed: "Fixed in [sha]"
-- If declining: explain reasoning clearly
+- Reference commit SHA if fixed: "Fixed in [sha]. Now [description]."
+- If declining: explain reasoning clearly with technical justification
 - If clarifying: ask specific questions
+- Verify reply posted successfully
 
-#### D. Resolve Thread (Immediately After Reply)
-**Critical step - don't skip**:
+#### D. Resolve Thread (IMMEDIATELY After Reply)
+**CRITICAL CHECKPOINT - Do NOT skip this step**:
 - Get thread ID from GraphQL query
 - Use GraphQL mutation to resolve thread
+- Verify thread shows `isResolved: true`
 - **Only skip resolution if**: awaiting reviewer response to your question
+- Update todo: mark this comment as "completed"
 
-**This is the step that gets forgotten in batch workflows - do it NOW while context is fresh.**
+**STOP**: Confirm completion with "✅ Comment [N] complete: [action taken], replied, resolved."
+
+**Now and ONLY now proceed to the next comment. Return to step A.**
 
 ### 3. Post Summary Comment
 After processing all feedback (inline threads + conversation comments):
@@ -211,7 +245,9 @@ gh pr comment $PR -b "All feedback addressed:
 
 ### ❌ Batch Processing (Fix All → Reply All → Resolve All)
 **Problem**: By the time you get to resolution step, you've lost context and forget some
-**Fix**: Use per-comment workflow - complete one comment fully before moving to next
+**Fix**: Use per-comment workflow - complete one comment fully (A→B→C→D) before moving to next
+**Detection**: If you find yourself making multiple commits before replying to any comments, STOP - you're batch processing
+**Enforcement**: After EACH comment resolution, explicitly confirm: "✅ Comment [N] complete" before proceeding
 
 ### ❌ Blindly Implementing All Suggestions
 **Problem**: Implementing suggestions without assessing validity or trade-offs
@@ -248,18 +284,34 @@ gh pr comment $PR -b "All feedback addressed:
 - Initial scan missed these because unresolved threads = 0 and status = APPROVED
 - User caught the miss: "Did you notice those?"
 
+### ❌ Not Handling Merge Conflicts First
+**Problem**: Attempting to process feedback while PR has merge conflicts
+**Fix**: Always check `mergeable` status first and resolve conflicts before addressing feedback
+**When to ask**: If conflicts involve complex logic changes or you're unsure which version to keep
+
 ---
 
 ## Red Flags (Fail Fast)
 
-- ❌ Only checking `reviewThreads`, not checking conversation comments
-- ❌ Seeing "APPROVED" status and stopping without reading full comment
-- ❌ Unresolved threads = 0, concluding "all done" without checking conversation
-- ❌ Resolving thread before pushing fix commit
-- ❌ Processing multiple comments before resolving any
-- ❌ Not replying to reviewer questions
-- ❌ Defensive or dismissive tone in replies
-- ❌ Ignoring blocking feedback
+**Process violations (STOP immediately if detected)**:
+- ❌ Making multiple commits without replying to comments → You're batch processing
+- ❌ Planning to "fix all issues then reply" → Wrong approach, use per-comment workflow
+- ❌ Thinking "I'll resolve threads at the end" → Threads must be resolved immediately after reply
+- ❌ Resolving thread before pushing fix commit → Wrong order
+
+**Feedback gathering violations**:
+- ❌ Only checking `reviewThreads`, not checking conversation comments → Missing feedback
+- ❌ Seeing "APPROVED" status and stopping without reading full comment → Missing non-blocking feedback
+- ❌ Unresolved threads = 0, concluding "all done" without checking conversation → Missing feedback
+
+**Communication violations**:
+- ❌ Not replying to reviewer questions → Threads left unresolved
+- ❌ Defensive or dismissive tone in replies → Unprofessional
+- ❌ Ignoring blocking feedback → PR won't be approved
+
+**Conflict handling violations**:
+- ❌ Processing feedback while PR has merge conflicts → Resolve conflicts first
+- ❌ Resolving complex conflicts without asking user → Ask for guidance on non-trivial conflicts
 
 ---
 
