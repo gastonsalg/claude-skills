@@ -53,7 +53,14 @@ This skill addresses recurring failures in PR reviews:
 - Fetch all existing inline comments: `gh api repos/{owner}/{repo}/pulls/{pr}/comments`
 - Fetch PR conversation reviews: `gh pr view {pr} --json reviews`
 - Check recent commits - look for "Fix:" commits addressing previous feedback
-- Note which issues have been claimed as fixed
+
+**For each existing unresolved thread**:
+- Read the actual current code to check if issue still exists
+- If **already fixed**:
+  - DO NOT post a new comment about it
+  - Note it for step 7 (you'll reply + resolve it there)
+- If **still present**: This is a valid finding you may need to escalate or comment on
+- Track findings in todo list to avoid duplicates
 
 ### 3. Review Current State
 **Review the ACTUAL code as it exists NOW, not just diffs or commits**
@@ -76,6 +83,10 @@ This skill addresses recurring failures in PR reviews:
 - **Test coverage** - Are edge cases handled?
 
 ### 6. Post NEW Findings Only
+**CRITICAL: Only post comments for issues NOT already mentioned**
+- Check your todo list from step 2 - don't duplicate existing unresolved threads
+- If an issue was already reported (even if unresolved), skip to step 7 to handle it
+
 **For code-specific issues** - Post inline comments on exact lines:
 - Use `/repos/{owner}/{repo}/pulls/{pr}/comments` endpoint
 - Requires: `commit_id`, `path`, `line`, `side` ("RIGHT" for new/modified, "LEFT" for deleted)
@@ -84,12 +95,13 @@ This skill addresses recurring failures in PR reviews:
 **For architectural/conceptual feedback** - Use review summary
 
 ### 7. Resolve Addressed Threads
-**CRITICAL: Clean up resolved issues**
+**CRITICAL: Clean up resolved issues from ANY reviewer**
 - Fetch unresolved review threads (see API reference)
-- For each unresolved thread created by you (gastonsalg):
-  - Check if issue is fixed in current code
+- For each unresolved thread (from Copilot, humans, or yourself):
+  - Check if issue is fixed in current code by reading actual files
   - Check if author replied explaining the fix
-  - If addressed: Resolve the thread using GraphQL mutation
+  - If addressed: Reply "Fixed in commit [sha]" and resolve thread using GraphQL mutation
+- **Your role**: As reviewer, you should resolve threads that have been addressed, regardless of who created them
 - **Don't leave threads unresolved** if they've been tackled
 
 ### 8. Create Review Summary
@@ -224,6 +236,11 @@ gh pr review $PR --approve -b "## Review Summary
 **Problem**: Only looking at diffs/commits without reading complete current files
 **Fix**: Always read the full current files to see actual state, not just what changed
 
+### ❌ Creating Duplicate Comments for Already-Reported Issues
+**Problem**: Seeing an unresolved thread from another reviewer about issue X, verifying it's fixed, then posting a NEW comment about X instead of resolving the existing thread
+**Fix**: If an issue was already reported (even if unresolved), don't create a new comment - instead reply to and resolve the existing thread
+**Detection**: You find yourself posting a comment about something Copilot or another reviewer already mentioned
+
 ---
 
 ## Red Flags (Fail Fast)
@@ -236,4 +253,5 @@ gh pr review $PR --approve -b "## Review Summary
 - ❌ Posting blob comments instead of inline
 - ❌ Assuming code is correct without adversarial analysis
 - ❌ Reporting issues without verifying they exist in current code
-- ❌ Leaving your unresolved threads when issues have been fixed
+- ❌ Posting new comment about issue already mentioned in existing unresolved thread
+- ❌ Leaving unresolved threads when issues have been fixed (from any reviewer)
