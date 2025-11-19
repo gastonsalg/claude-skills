@@ -19,23 +19,20 @@ This skill addresses recurring failures in PR reviews:
 
 ## Core Principles
 
-### What to Review
+### Review Focus
 - **Security**: SQL injection, XSS, exposed secrets, auth bypasses
 - **Logic**: Off-by-one errors, null handling, edge cases
 - **Performance**: N+1 queries, unnecessary loops, memory leaks
 - **Architecture**: Violations of project patterns (see CLAUDE.md, ARCHITECTURE.md)
 - **Testing**: Missing tests, inadequate coverage
 
-### Review Style
+### Communication Style
 - **Concise**: One finding per comment, no verbosity
 - **Objective**: Focus on facts, not validation
 - **Specific**: Reference exact lines, provide fixes
 - **Non-redundant**: Don't duplicate other reviewers' feedback
-
-### Comment Format
-- **Emoji prefix**: ❌ Critical | ⚠️ Warning | 💡 Suggestion | 🔍 Question | ✅ Strength
-- **Structure**: Issue (1 sentence) + Fix (code suggestion)
-- **Inline placement**: MANDATORY for code-specific issues
+- **Inline for code issues**: Post comments on exact lines (MANDATORY)
+- **Format**: Emoji prefix (❌ Critical | ⚠️ Warning | 💡 Suggestion | 🔍 Question | ✅ Strength) + Issue + Fix
 
 ---
 
@@ -44,48 +41,42 @@ This skill addresses recurring failures in PR reviews:
 ### 1. Setup and Checkout
 - Use TodoWrite to track review progress
 - Get PR context (title, body, linked issues, files changed)
-- **Get actual branch name**: `gh pr view {pr} --json headRefName`
-- **Checkout and pull latest**: `git fetch origin {branch} && git checkout {branch} && git pull`
-- Verify you're on correct branch: `git branch --show-current`
+- Get the actual branch name from the PR
+- Checkout the PR branch and pull latest changes
+- Verify you're on the correct branch before proceeding
 
-### 2. Check Existing Feedback
-**CRITICAL: See what's already been reported**
-- Fetch all existing inline comments: `gh api repos/{owner}/{repo}/pulls/{pr}/comments`
-- Fetch PR conversation reviews: `gh pr view {pr} --json reviews`
-- Check recent commits - look for "Fix:" commits addressing previous feedback
+### 2. Check Existing Feedback and Current State
+**CRITICAL: See what's been reported and what actually exists NOW**
+- Fetch all existing inline comments and PR conversation reviews
+- Check recent commits for "Fix:" commits addressing previous feedback
+- **Read actual current files** to see complete state (not just diffs)
 
 **For each existing unresolved thread**:
-- Read the actual current code to check if issue still exists
-- If **already fixed**:
-  - DO NOT post a new comment about it
-  - Note it for step 7 (you'll reply + resolve it there)
-- If **still present**: This is a valid finding you may need to escalate or comment on
+- Read current code to verify if issue still exists
+- If **already fixed**: Note for step 7 (you'll reply + resolve), DO NOT post new comment
+- If **still present**: Valid finding you may escalate or comment on
 - Track findings in todo list to avoid duplicates
 
-### 3. Review Current State
-**Review the ACTUAL code as it exists NOW, not just diffs or commits**
-- **Read the actual files**: Use Read tool on changed files to see complete current state
-- **Don't rely solely on diffs**: Diffs show what changed, not what exists
-- **Don't trust commit messages**: "Fix X" doesn't mean X is actually fixed
-- **Verify claimed fixes**: If previous comments say "fixed", check if actually fixed in current code
-- Compare current code against existing feedback to see what's truly resolved
+**Don't trust without verification**:
+- Diffs alone (show changes, not complete state)
+- Commit messages ("Fix X" doesn't guarantee X is fixed)
+- Previous comments (verify issues exist in actual current code)
 
-### 4. Understand Context
+### 3. Understand Context
 - **Read project docs**: CLAUDE.md, README.md, ARCHITECTURE.md, CONTRIBUTING.md
-- **Check commit history**: `git log origin/main..HEAD` to understand evolution
-- **Review diff**: `gh pr diff` to see what changed from base
+- **Review diff** to see what changed from base
 - **Understand intent**: What problem is this PR solving?
 
-### 5. Analyze Code (Adversarial Mindset)
+### 4. Analyze Code (Adversarial Mindset)
 - **Assume bugs exist** - Hunt for them systematically
 - **Check security first** - Most critical findings
 - **Verify architecture** - Does it follow project patterns?
 - **Test coverage** - Are edge cases handled?
 
-### 6. Post NEW Findings Only
+### 5. Post NEW Findings Only
 **CRITICAL: Only post comments for issues NOT already mentioned**
 - Check your todo list from step 2 - don't duplicate existing unresolved threads
-- If an issue was already reported (even if unresolved), skip to step 7 to handle it
+- If an issue was already reported (even if unresolved), skip to step 6 to handle it
 
 **For code-specific issues** - Post inline comments on exact lines:
 - Use `/repos/{owner}/{repo}/pulls/{pr}/comments` endpoint
@@ -94,7 +85,7 @@ This skill addresses recurring failures in PR reviews:
 
 **For architectural/conceptual feedback** - Use review summary
 
-### 7. Resolve Addressed Threads
+### 6. Resolve Addressed Threads
 **CRITICAL: Clean up resolved issues from ANY reviewer**
 - Fetch unresolved review threads (see API reference)
 - For each unresolved thread (from Copilot, humans, or yourself):
@@ -104,96 +95,58 @@ This skill addresses recurring failures in PR reviews:
 - **Your role**: As reviewer, you should resolve threads that have been addressed, regardless of who created them
 - **Don't leave threads unresolved** if they've been tackled
 
-### 8. Create Review Summary
-- Determine event: APPROVE (no blockers) | REQUEST_CHANGES (critical issues) | COMMENT (suggestions only)
+### 7. Create Review Summary
+**CRITICAL: Check PR authorship before approval**
+- Get PR author and current user credentials
+- **If author matches current user**: Use `--comment` instead of `--approve` (cannot self-approve)
+- **If different author**: Use appropriate event based on findings
+
+**Review event selection**:
+- APPROVE (no blockers) | REQUEST_CHANGES (critical issues) | COMMENT (suggestions only or self-authored PR)
 - List NEW findings by severity with file:line references
 - State approval rationale clearly
 - Keep concise - no PR overview, no file lists
 
-### 9. Return to Main Branch
+### 8. Return to Main Branch
 - Always return to main after review
 
 ---
 
 ## API Quick Reference
 
-### Create Inline Comment (with Suggestion)
-```bash
-# Get commit SHA
-COMMIT_SHA=$(gh pr view $PR --json headRefOid --jq '.headRefOid')
+### Inline Comments Require Specific Endpoint
+- Use `/pulls/{pr}/comments` endpoint (NOT `/reviews`) with `line` parameter
+- Required fields: `commit_id`, `path`, `line`, `side`
+- `side` parameter: `"RIGHT"` for new/modified lines, `"LEFT"` for deleted lines
+- Use `suggestion` code fence for one-click fixes
 
-# Post inline comment
-gh api repos/{owner}/{repo}/pulls/$PR/comments --method POST \
-  --field body="⚠️ **Warning**: Missing error handling.
-
+### Suggestion Block Format
+```markdown
 \`\`\`suggestion
-try:
-    result = operation()
-except SpecificError as e:
-    logger.error(f\"Failed: {e}\")
-    return None
+// Replacement code here
 \`\`\`
-
-Handle exceptions to prevent silent failures." \
-  --field commit_id="$COMMIT_SHA" \
-  --field path="file.py" \
-  --field line=174 \
-  --field side="RIGHT"
 ```
+GitHub creates an "Apply suggestion" button for one-click fixes.
 
-### Reply to Comment
-```bash
-gh api --method POST repos/{owner}/{repo}/pulls/$PR/comments/$COMMENT_ID/replies \
-  --field body="Fixed in latest commit. Now validates input before processing."
-```
-
-### Resolve Thread
+### Resolve Thread (GraphQL Required)
 ```bash
 # List unresolved threads
-gh api graphql -f query='
-query {
+gh api graphql -f query='query {
   repository(owner: "{owner}", name: "{repo}") {
     pullRequest(number: '$PR') {
       reviewThreads(first: 100) {
-        nodes {
-          id
-          isResolved
-          comments(first: 1) { nodes { body } }
-        }
+        nodes { id isResolved comments(first: 1) { nodes { body } } }
       }
     }
   }
 }'
 
 # Resolve thread
-gh api graphql -f query='
-mutation($threadId: ID!) {
+gh api graphql -f query='mutation($threadId: ID!) {
   resolveReviewThread(input: {threadId: $threadId}) {
     thread { isResolved }
   }
 }' -f threadId="THREAD_ID"
-```
-
-### Create Review Summary
-```bash
-gh pr review $PR --approve -b "## Review Summary
-
-**Status**: Ready to merge
-
-**Reviewed**: 3/3 files
-
----
-
-**⚠️ Warnings**:
-1. Missing error handling at file.py:174
-2. SQL injection risk at db.py:89
-
-**💡 Suggestions**:
-1. Extract constant at calc.py:42
-
----
-
-**Rationale**: Warnings are minor, not blocking."
 ```
 
 ---
@@ -241,6 +194,11 @@ gh pr review $PR --approve -b "## Review Summary
 **Fix**: If an issue was already reported (even if unresolved), don't create a new comment - instead reply to and resolve the existing thread
 **Detection**: You find yourself posting a comment about something Copilot or another reviewer already mentioned
 
+### ❌ Attempting to Approve Self-Authored PR
+**Problem**: Trying to use `gh pr review --approve` on a PR you created, causing "Can not approve your own pull request" error
+**Fix**: Check PR author before approval - if it matches current user, use `--comment` instead of `--approve`
+**Detection**: Getting GraphQL error "Can not approve your own pull request" when running approval command
+
 ---
 
 ## Red Flags (Fail Fast)
@@ -255,3 +213,4 @@ gh pr review $PR --approve -b "## Review Summary
 - ❌ Reporting issues without verifying they exist in current code
 - ❌ Posting new comment about issue already mentioned in existing unresolved thread
 - ❌ Leaving unresolved threads when issues have been fixed (from any reviewer)
+- ❌ Attempting to approve PR without checking if you're the author

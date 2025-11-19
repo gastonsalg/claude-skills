@@ -138,12 +138,12 @@ This skill addresses recurring failures when responding to PR feedback:
 
 #### C. Reply to Comment
 **Do this IMMEDIATELY after step B, before any other work**:
-- Use the comment ID from the thread
+- Use the comment's **databaseId** (integer) from GraphQL query, NOT the node id
 - State what you did or decided
 - Reference commit SHA if fixed: "Fixed in [sha]. Now [description]."
 - If declining: explain reasoning clearly with technical justification
 - If clarifying: ask specific questions
-- Verify reply posted successfully
+- Verify reply posted successfully (check for 404 errors - means wrong ID type)
 
 #### D. Resolve Thread (IMMEDIATELY After Reply)
 **CRITICAL CHECKPOINT - Do NOT skip this step**:
@@ -181,6 +181,7 @@ query {
           comments(first: 10) {
             nodes {
               id
+              databaseId
               author { login }
               body
               path
@@ -194,6 +195,10 @@ query {
 }' --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)'
 ```
 
+**Important**: Each comment has TWO IDs:
+- `id` (node ID): GraphQL string like `"PRRC_kwDO..."` - use for GraphQL mutations
+- `databaseId`: Integer like `2541077340` - use for REST API replies
+
 ### Get PR Conversation Comments
 ```bash
 # Shows ALL comments including review summaries with suggestions
@@ -205,11 +210,14 @@ gh api repos/owner/repo/issues/$PR/comments
 
 ### Reply to Comment
 ```bash
-# Get comment ID from thread's first comment
+# CRITICAL: Use databaseId (integer), NOT node id (GraphQL string)
+# Get databaseId from GraphQL query above
 gh api --method POST \
-  repos/owner/repo/pulls/$PR/comments/$COMMENT_ID/replies \
+  repos/owner/repo/pulls/$PR/comments/$DATABASE_ID/replies \
   --field body="Fixed in commit abc1234. Now validates input before processing."
 ```
+
+**Common error**: Using node ID (`PRRC_kwDO...`) returns 404. Must use `databaseId` (integer).
 
 ### Resolve Thread (CRITICAL - Don't Forget)
 ```bash
@@ -288,6 +296,14 @@ gh pr comment $PR -b "All feedback addressed:
 **Problem**: Attempting to process feedback while PR has merge conflicts
 **Fix**: Always check `mergeable` status first and resolve conflicts before addressing feedback
 **When to ask**: If conflicts involve complex logic changes or you're unsure which version to keep
+
+### ❌ Using Node ID Instead of Database ID for Reply API
+**Problem**: Using GraphQL node ID (e.g., `PRRC_kwDOJYs3c86XdcNc`) in REST API reply endpoint returns 404
+**Fix**: Use `databaseId` field (integer) from GraphQL query, not `id` field (string)
+**Detection**: "Parent comment not found (HTTP 404)" when trying to reply to comment
+**Example**:
+- ❌ Wrong: `repos/owner/repo/pulls/190/comments/PRRC_kwDOJYs3c86XdcNc/replies`
+- ✅ Right: `repos/owner/repo/pulls/190/comments/2541077340/replies`
 
 ---
 
