@@ -16,6 +16,9 @@ This skill enforces the mandatory git workflow for production safety. Direct pus
 - Creating PRs without running code review
 - Committing secrets or temporary files
 - Creating PRs targeting wrong base branch (feature branch instead of main)
+- Using stale local branches from previous (merged) PRs instead of branching fresh from main
+- Creating feature branches from outdated local main (not pulling before branching)
+- Forgetting to request automated reviews after PR creation
 
 **Why this matters:**
 - Production deployments trigger automatically from main
@@ -40,15 +43,25 @@ This skill enforces the mandatory git workflow for production safety. Direct pus
 - ✅ Run code review before creating PR
 - ✅ Verify staged changes (avoid secrets)
 - ✅ Write descriptive commit messages
+- ✅ Request Copilot review after PR creation
 
 ---
 
 ## Workflow
 
 ### 1. Verify Git State
-- Check current branch - if on main/master, create feature branch
+**CRITICAL: Always start from a fresh, up-to-date main branch**
+
+- Check current branch name
+- **If on an existing feature branch**: STOP and assess - is this a stale branch from a previous PR? Check if branch exists on remote. If remote branch doesn't exist or was already merged, this is a stale branch - do NOT reuse it
+- **If on main/master**: Fetch and pull latest before branching (`git fetch origin main && git pull`)
+- Create a NEW feature branch with a name matching the current task
 - Verify changes exist before proceeding
-- Check for uncommitted changes
+
+**Red flags for stale branches:**
+- Branch name references old version/issue (e.g., `feat/update-to-v1.2` when updating to v1.3)
+- Branch doesn't exist on remote (already merged and deleted)
+- Branch is behind main by multiple commits
 
 ### 2. Run Tests
 **Test strategy based on changes:**
@@ -112,7 +125,14 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 **Create PR with descriptive title and structured body**
 
-### 7. Final Verification
+### 7. Request Copilot Review
+**CRITICAL: Always request Copilot review immediately after PR creation**
+
+- Add a comment to the PR mentioning `@copilot` to request automated review
+- Use: `gh pr comment <PR_NUMBER> --body "@copilot review"`
+- Verify the comment was posted successfully before proceeding
+
+### 8. Final Verification
 - View PR to confirm creation
 - Check CI status (all checks should trigger)
 - Verify no accidental push to main (git log check)
@@ -164,6 +184,29 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 - Both PRs target `main` independently
 - Can merge in any order
 
+### ❌ Reusing Stale Local Branches
+**Problem**: Using an existing local branch from a previous (already merged) PR instead of creating a fresh branch from main. Causes merge conflicts because local branch is based on old main.
+**Fix**: Always check if the current branch is fresh. Red flags: branch name references old version/task, branch doesn't exist on remote, branch is behind main.
+**Detection**: Before reusing any existing feature branch, verify it exists on remote (`git ls-remote --heads origin <branch>`). If it doesn't exist, the PR was likely merged and branch deleted - create a new branch.
+
+**Example of mistake:**
+- Local branch `feat/update-metabase-to-v0.57.3` exists from previous PR
+- Previous PR was merged and remote branch deleted
+- Started working on v0.57.4 update using the stale local branch
+- Created PR with merge conflicts because branch was based on old main
+
+### ❌ Branching from Outdated Local Main
+**Problem**: Creating feature branch from local main without pulling latest changes first. Local main may be commits behind remote.
+**Fix**: ALWAYS run `git fetch origin main && git pull` before creating a new feature branch. Never assume local main is current.
+**Detection**: After checkout to main, check `git status` - if it says "behind origin/main", you must pull first.
+
+---
+
+
+### ❌ Forgetting Copilot Review Request
+**Problem**: Creating PR but not requesting Copilot review, missing automated feedback
+**Fix**: Immediately after PR creation, add comment `@copilot review` to trigger automated review
+
 ---
 
 ## Edge Cases
@@ -189,10 +232,14 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ## Red Flags (Fail Fast)
 
-- ❌ Current branch is main/master
+- ❌ Current branch is main/master (need to create feature branch)
+- ❌ Current feature branch doesn't exist on remote (stale local branch - create fresh)
+- ❌ Current feature branch name references old version/task (stale - create fresh)
+- ❌ Local main is behind remote (must pull before branching)
 - ❌ No changes to commit (empty diff)
 - ❌ Tests failing
 - ❌ Critical code review findings unresolved
 - ❌ Secrets in staged changes
 - ❌ Force push to main/master
 - ❌ PR targeting feature branch without clear justification
+- ❌ PR created without Copilot review request
