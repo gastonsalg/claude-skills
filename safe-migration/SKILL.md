@@ -13,7 +13,7 @@ This skill provides systematic safety review for Alembic database migrations bef
 - Migrations auto-apply on production deployment from main
 - Unsafe operations can lock tables and cause downtime
 - Migration conflicts break deployments
-- Data loss from `DROP` operations is irreversible
+- Data loss from DROP operations is irreversible
 - Performance issues affect production immediately
 
 ---
@@ -22,186 +22,122 @@ This skill provides systematic safety review for Alembic database migrations bef
 
 ### 1. Multiple Heads (CRITICAL - Blocks Deployment)
 **What**: Multiple migration branches exist
-**Detection**: Run `alembic heads` - output should show single revision
-**Fix**: Create merge migration with `alembic merge -m "merge heads"`
+**Detection**: Run alembic heads - output should show single revision
+**Fix**: Linearize the chain (see Resolving Multiple Heads below)
 **Why critical**: Deployment fails if migration graph has multiple endpoints
 
-### 2. Irreversible Operations (Data Loss Risk)
+### 2. Branch Migration Drift (CRITICAL)
+**What**: PR branch has modified migrations that exist on main (corrupted during merge)
+**Detection**: git diff origin/main -- alembic/versions/
+**Fix**: Reset drifted files with git checkout origin/main -- file
+**Why critical**: Modifying mains migrations breaks the chain and causes double heads
+
+### 3. Irreversible Operations (Data Loss Risk)
 **What**: Operations that destroy data without recovery path
-**Detection**: Look for `drop_table`, `drop_column`, `drop_constraint`
-**Fix**:
-- Document backup plan
-- Stage removal (remove code usage first, drop in next release)
-- Test downgrade path
-**Why critical**: Lost data cannot be recovered
+**Detection**: Look for drop_table, drop_column, drop_constraint
+**Fix**: Stage removal (remove code usage first, drop in next release), test downgrade
 
-### 3. Table Locks (Downtime Risk)
+### 4. Table Locks (Downtime Risk)
 **What**: Operations that lock tables during migration
-**Detection**: `add_column NOT NULL`, `create_index`, `alter_column` type changes
-**Fix**:
-- Add nullable columns first, backfill, then add constraint
-- Create indexes during low traffic or use CONCURRENT
-- Use staged column type changes (new column → migrate → drop old)
-**Why critical**: Locks can cause production downtime
-
-### 4. Foreign Key Constraints (Performance Risk)
-**What**: Adding/dropping FKs on populated tables
-**Detection**: `create_foreign_key`, `drop_foreign_key`
-**Fix**: Add with NOT VALID, then validate separately
-**Why critical**: Full table scan, long locks on both tables
+**Detection**: add_column NOT NULL, create_index, alter_column type changes
+**Fix**: Add nullable columns first, backfill, then add constraint
 
 ### 5. Data Migrations (Reliability Risk)
 **What**: Data transformations within migrations
-**Detection**: `execute()`, `op.bulk_insert()`, connection operations
-**Fix**:
-- Make idempotent (can run multiple times safely)
-- Batch large operations
-- Test downgrade thoroughly
-**Why critical**: Data corruption if migration partially fails
+**Detection**: execute(), op.bulk_insert(), connection operations
+**Fix**: Make idempotent, batch large operations, test downgrade thoroughly
 
-### 6. Merge Migrations (Conflict Risk)
-**What**: Migration merging two branches
-**Detection**: `down_revision` is tuple, not string
-**Fix**: Verify both parents are safe, no data conflicts
-**Why critical**: Can introduce conflicts between parallel migrations
+### 6. Merge Migrations (FORBIDDEN)
+**What**: Migration with tuple down_revision merging two branches
+**Detection**: down_revision is a tuple instead of string
+**Fix**: NEVER use alembic merge - linearize instead (see below)
+**Why critical**: Causes skipped migrations and impossible downgrades
 
-### 7. Missing load_id (ETL Pattern Violation)
-**What**: ETL tables without load_id foreign key
-**Detection**: New tables missing `load_id` column
-**Fix**: Add `sa.Column('load_id', sa.Integer(), sa.ForeignKey('load.id'))`
-**Why critical**: Required for ETL data lineage tracking
+---
+
+## Resolving Multiple Heads
+
+**NEVER use alembic merge** - it creates tuple down_revision causing:
+- Skipped migrations in production
+- Missing database tables
+- Impossible downgrade paths
+
+### Correct Approach: Linearize the Chain
+
+1. **Check for migration drift first**:
+   Run: git diff origin/main -- alembic/versions/
+   If any migrations from main were modified, reset them:
+   Run: git checkout origin/main -- alembic/versions/modified_file.py
+
+2. **Identify the current head on main** by tracing down_revision values
+
+3. **Update your migrations down_revision** to point to mains head
+
+4. **Verify single head**: alembic heads should show ONE revision
 
 ---
 
 ## Workflow
 
-### 1. Detect Migration Changes
-- Check if `alembic/versions/` files changed
-- Exit early if no migrations modified
+### 1. Check for Migration Drift (CRITICAL - Do First)
+Before any other checks, compare branch migrations against main:
+Run: git diff origin/main -- alembic/versions/
+- If existing migrations were modified: Reset them from main
+- Only NEW migration files should differ
 
 ### 2. Run Safety Checks
-- Execute all 7 critical checks above
-- Document findings by severity (Critical, Warning, Pass)
+- Check for multiple heads: alembic heads
+- Check for tuple down_revision (merge migrations)
+- Review for dangerous operations
 
 ### 3. Test Migration Locally
-**Upgrade path:**
-- Run `alembic upgrade head`
-- Verify with `alembic current`
-- Check data integrity
-
-**Downgrade path (REQUIRED):**
-- Run `alembic downgrade -1`
-- Verify data still valid
+- Upgrade: alembic upgrade head
+- Downgrade: alembic downgrade -1
 - Upgrade again to confirm reversibility
 
 ### 4. Generate Safety Report
-Structure:
-- **Migration**: Revision ID and message
-- **✅ Passed**: Checks that passed
-- **⚠️ Warnings**: Non-blocking concerns
-- **❌ Issues**: Blocking problems
-- **Testing**: Upgrade/downgrade results
-- **Recommendations**: Deployment guidance
-
-### 5. Decision
-- **Issues found**: Block PR, require fixes
-- **Warnings only**: Allow PR, document risks
-- **All pass**: Approve migration for PR
+- Passed: Checks that passed
+- Warnings: Non-blocking concerns
+- Issues: Blocking problems
 
 ---
 
 ## Common Mistakes
 
-### ❌ Not Testing Downgrade
-**Problem**: Migration works forward but fails backward
-**Fix**: Always test `alembic downgrade -1` before committing
+### Using alembic merge for Multiple Heads
+**Problem**: Creates tuple down_revision, breaks production
+**Fix**: Linearize the chain - each migration has exactly ONE string parent
 
-### ❌ Adding NOT NULL Without Default
+### Modifying Existing Migrations During Merge Conflicts
+**Problem**: Merge conflicts in migration files get resolved by changing down_revision
+**Fix**: Always reset migrations from main, only modify YOUR new migration
+**Detection**: git diff origin/main shows changes to mains migrations
+
+### Not Checking Migration Drift Before Fixing Heads
+**Problem**: Fix your migrations parent but branch has corrupted mains migrations
+**Fix**: ALWAYS check git diff origin/main first, reset drifted files
+**Detection**: Multiple heads persist after fixing your migrations down_revision
+
+### Not Testing Downgrade
+**Problem**: Migration works forward but fails backward
+**Fix**: Always test alembic downgrade -1 before committing
+
+### Adding NOT NULL Without Default
 **Problem**: Locks table, fails on existing rows
 **Fix**: Add as nullable first, backfill data, then add constraint
 
-### ❌ Dropping Columns Without Staging
+### Dropping Columns Without Staging
 **Problem**: Code still references column, causes errors
 **Fix**: Remove code references in PR 1, drop column in PR 2
-
-### ❌ Creating Indexes on Large Tables
-**Problem**: Locks table for extended period
-**Fix**: Schedule during low traffic or use CONCURRENT (if supported)
-
-### ❌ Forgetting load_id Foreign Keys
-**Problem**: ETL data tracking broken
-**Fix**: All ETL tables need `load_id` FK to `load` table
-
-### ❌ Multiple Heads
-**Problem**: Parallel migrations create divergent histories
-**Fix**: Create merge migration immediately when detected
-
-### ❌ Hardcoding Environment Values
-**Problem**: Production values in migration code
-**Fix**: Use environment variables or config for env-specific data
-
----
-
-## Dangerous Pattern Examples
-
-### Adding NOT NULL Column
-```python
-# ❌ BAD: Locks table, fails on existing data
-op.add_column('users', sa.Column('email', sa.String(255), nullable=False))
-
-# ✅ GOOD: Staged approach (3 steps)
-# Step 1: Add nullable
-op.add_column('users', sa.Column('email', sa.String(255), nullable=True))
-# Step 2: Backfill data (separate script)
-# Step 3: Add constraint
-op.alter_column('users', 'email', nullable=False)
-```
-
-### Changing Column Type
-```python
-# ❌ BAD: Full table rewrite, locks for duration
-op.alter_column('metrics', 'value', type_=sa.BigInteger())
-
-# ✅ GOOD: Create new, migrate, swap
-op.add_column('metrics', sa.Column('value_new', sa.BigInteger()))
-# Backfill: UPDATE metrics SET value_new = value
-op.drop_column('metrics', 'value')
-op.rename_column('metrics', 'value_new', 'value')
-```
-
-### Dropping Columns
-```python
-# ❌ BAD: Code still uses this field
-op.drop_column('users', 'legacy_field')
-
-# ✅ GOOD: Staged removal
-# PR 1: Remove all code references to legacy_field, deploy
-# PR 2: Drop column after verifying no usage
-op.drop_column('users', 'legacy_field')
-```
-
-### Creating Indexes
-```python
-# ❌ BAD: Locks large table during index creation
-op.create_index('idx_users_email', 'users', ['email'])
-
-# ✅ GOOD: Document timing or use concurrent
-# Option 1: Add comment for deployment timing
-# Deploy during maintenance window (low traffic)
-op.create_index('idx_users_email', 'users', ['email'])
-
-# Option 2: Use CONCURRENT (PostgreSQL only)
-op.create_index('idx_users_email', 'users', ['email'], postgresql_concurrently=True)
-```
 
 ---
 
 ## Red Flags (Fail Fast)
 
-- ❌ Multiple heads detected
-- ❌ `drop_table` or `drop_column` without backup plan
-- ❌ `add_column NOT NULL` without default value
-- ❌ Downgrade not tested or fails
-- ❌ ETL table missing `load_id` FK
-- ❌ Data migration without idempotency
-- ❌ Hardcoded production values in migration
+- Multiple heads detected
+- down_revision is a tuple (merge migration)
+- PR modifies migrations that exist on main
+- drop_table or drop_column without staged removal
+- add_column NOT NULL without default value
+- Downgrade not tested or fails
+- Data migration without idempotency
