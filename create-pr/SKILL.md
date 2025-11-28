@@ -128,9 +128,9 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 ### 7. Request Copilot Review
 **CRITICAL: Always request Copilot review immediately after PR creation**
 
-- Add a comment to the PR mentioning `@copilot` to request automated review
-- Use: `gh pr comment <PR_NUMBER> --body "@copilot review"`
-- Verify the comment was posted successfully before proceeding
+- Request Copilot as a reviewer via the GitHub API (not via comment)
+- Use: `gh api repos/{owner}/{repo}/pulls/{pr_number}/requested_reviewers --method POST -f 'reviewers[]=copilot-pull-request-reviewer[bot]'`
+- Verify Copilot appears in the PR's requested reviewers before proceeding
 
 ### 8. Final Verification
 - View PR to confirm creation
@@ -205,7 +205,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ### ❌ Forgetting Copilot Review Request
 **Problem**: Creating PR but not requesting Copilot review, missing automated feedback
-**Fix**: Immediately after PR creation, add comment `@copilot review` to trigger automated review
+**Fix**: Immediately after PR creation, request Copilot as reviewer via API
 
 ---
 
